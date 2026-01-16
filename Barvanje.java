@@ -105,7 +105,31 @@ public class Barvanje {
         }
     }
 
-    public static void displayGrid(GridCase grids) {
+    private static boolean checkGrid(GridCase grids) {
+        int bCounter = 0, wCounter = 0;
+        List<List<Character>> grid = grids.grid;
+        for (int i = 0; i < grid.size(); i++) {
+            for (int j = 0; j < grid.get(i).size(); j++) {
+                // check above the square in lines
+                for (int k = 0; i - k > 0 && grids.d > k; k++) {
+                    List<Character> row = grid.get(i - k - 1); // Get the row above
+                    int leftOffset = j - grids.d;
+                    for (int l = ((leftOffset) >= 0) ? leftOffset : 0; l <= j + grids.d && l < grids.n; l++) {
+                        // this way we get all of the boxes that are within the range grids.d above the square
+                        Character c = row.get(l);
+                        if (c == '.') {
+                            wCounter++;
+                        } else if (c == '#') {
+                            bCounter++;
+                        }
+                    }
+                }
+                
+            }
+        }
+    }
+
+    private static void displayGrid(GridCase grids) {
         System.out.printf(grids.getNumbers());
         for (List<Character> row : grids.grid) {
             for (char cell : row) {
