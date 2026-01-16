@@ -30,7 +30,7 @@ public class Barvanje {
         List<GridCase> grids = getGrids("Barvanje.txt");
         for (GridCase gridCase : grids) {
             displayGrid(gridCase);
-            firstTry(gridCase);
+            checkGrid(grids.get(0));
         }
     }
 
@@ -46,7 +46,8 @@ public class Barvanje {
                     // skip seperators
                 }
                 line = br.readLine(); // read again to skip the grid indexes
-                if (line == null) break;
+                if (line == null)
+                    break;
 
                 String[] parts = line.trim().split("\\s+");
                 int n = Integer.parseInt(parts[0]);
@@ -100,22 +101,29 @@ public class Barvanje {
                         }
                     }
                 }
-                // TODO: apply constraints using gridCase.d, gridCase.b, gridCase.c with the counters
+                // TODO: apply constraints using gridCase.d, gridCase.b, gridCase.c with the
+                // counters
             }
         }
     }
 
     private static boolean checkGrid(GridCase grids) {
-        int bCounter = 0, wCounter = 0;
+        int bCounter, wCounter;
         List<List<Character>> grid = grids.grid;
         for (int i = 0; i < grid.size(); i++) {
             for (int j = 0; j < grid.get(i).size(); j++) {
-                // check above the square in lines
-                for (int k = 0; i - k > 0 && grids.d > k; k++) {
-                    List<Character> row = grid.get(i - k - 1); // Get the row above
-                    int leftOffset = j - grids.d;
-                    for (int l = ((leftOffset) >= 0) ? leftOffset : 0; l <= j + grids.d && l < grids.n; l++) {
-                        // this way we get all of the boxes that are within the range grids.d above the square
+                bCounter = 0;
+                wCounter = 0;
+                int topOffset = i - grids.d; // Get the top offset depending on the column and d
+                for (int k = (topOffset > 0) ? topOffset : 0; k <= i + grids.d && k < grids.n; k++) {
+                    // Check every box in i - d lines above to i + d
+                    // Check if i - d is < 0 and if i + d > n
+                    int leftOffset = j - grids.d; // Get the left offset depending on the position in the row and d
+                    List<Character> row = grid.get(k);
+                    for (int l = (leftOffset > 0) ? leftOffset : 0; l <= j + grids.d && l < grids.n; l++) {
+                        // Go trough every row from j - d to j + d, making sure to not check the box itself
+                        // Check if j - d is < 0 and if j + d > n
+                        if (l == j && k == i) continue; // Skip self check
                         Character c = row.get(l);
                         if (c == '.') {
                             wCounter++;
@@ -124,9 +132,12 @@ public class Barvanje {
                         }
                     }
                 }
-                
+                if (bCounter != 0) {
+                    System.out.printf("[%d, %d] = %d ⬛\n", i, j, bCounter);
+                }
             }
         }
+        return true;
     }
 
     private static void displayGrid(GridCase grids) {
@@ -134,10 +145,17 @@ public class Barvanje {
         for (List<Character> row : grids.grid) {
             for (char cell : row) {
                 switch (cell) {
-                    case '.': System.out.print("⬜ "); break;
-                    case '#': System.out.print("⬛ "); break;
-                    case 'R': System.out.print("🟥 "); break;
-                    default:  System.out.print(cell + " ");
+                    case '.':
+                        System.out.print("⬜ ");
+                        break;
+                    case '#':
+                        System.out.print("⬛ ");
+                        break;
+                    case 'R':
+                        System.out.print("🟥 ");
+                        break;
+                    default:
+                        System.out.print(cell + " ");
                 }
             }
             System.out.println();
