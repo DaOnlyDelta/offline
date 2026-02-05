@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
-import java.util.Random;
 
 public class Barvanje {
 
@@ -172,158 +171,6 @@ public class Barvanje {
     }
 
     /**
-     * Greedy heuristic:
-     * - each time, pick a WHITE cell that can be flipped to BLACK while keeping the
-     * grid valid
-     * - prefer the flip that creates the most new close-black pairs (i.e. most
-     * nearby blacks)
-     *
-     * Uses incremental neighbor counts so each accepted flip costs O((2d+1)^2).
-     */
-    private static void firstTry(GridCase gridCase) {
-        int n = gridCase.n;
-        int d = gridCase.d;
-        int b = gridCase.b;
-        int c = gridCase.c;
-
-        List<List<Character>> grid = gridCase.grid;
-
-        int[][] blackNearby = new int[n][n];
-        int[][] whiteNearby = new int[n][n];
-
-        // Initialize neighbor counts (Chebyshev distance <= d, excluding self)
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                int r0 = Math.max(0, i - d);
-                int r1 = Math.min(n - 1, i + d);
-                int c0 = Math.max(0, j - d);
-                int c1 = Math.min(n - 1, j + d);
-                int bn = 0;
-                int wn = 0;
-                for (int r = r0; r <= r1; r++) {
-                    List<Character> row = grid.get(r);
-                    for (int col = c0; col <= c1; col++) {
-                        if (r == i && col == j) {
-                            continue;
-                        }
-                        char cell = row.get(col);
-                        if (cell == '#') {
-                            bn++;
-                        } else if (cell == '.') {
-                            wn++;
-                        }
-                    }
-                }
-                blackNearby[i][j] = bn;
-                whiteNearby[i][j] = wn;
-            }
-        }
-
-        class Candidate {
-            final int i;
-            final int j;
-            final int score;
-
-            Candidate(int i, int j, int score) {
-                this.i = i;
-                this.j = j;
-                this.score = score;
-            }
-        }
-
-        PriorityQueue<Candidate> pq = new PriorityQueue<>(Comparator.comparingInt((Candidate x) -> x.score).reversed());
-        boolean[][] dead = new boolean[n][n];
-
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                if (grid.get(i).get(j) == '.') {
-                    pq.add(new Candidate(i, j, blackNearby[i][j]));
-                }
-            }
-        }
-
-        int flips = 0;
-        while (!pq.isEmpty()) {
-            Candidate cand = pq.poll();
-            int i = cand.i;
-            int j = cand.j;
-
-            if (dead[i][j]) {
-                continue;
-            }
-            if (grid.get(i).get(j) != '.') {
-                continue;
-            }
-
-            int currentScore = blackNearby[i][j];
-            if (currentScore != cand.score) {
-                pq.add(new Candidate(i, j, currentScore));
-                continue;
-            }
-
-            // New black cell must satisfy its own constraints
-            if (whiteNearby[i][j] < b || blackNearby[i][j] > c) {
-                dead[i][j] = true;
-                continue;
-            }
-
-            // Existing black cells in neighborhood must remain valid after this flip
-            int r0 = Math.max(0, i - d);
-            int r1 = Math.min(n - 1, i + d);
-            int c0 = Math.max(0, j - d);
-            int c1 = Math.min(n - 1, j + d);
-
-            boolean ok = true;
-            outer: for (int r = r0; r <= r1; r++) {
-                List<Character> row = grid.get(r);
-                for (int col = c0; col <= c1; col++) {
-                    if (r == i && col == j) {
-                        continue;
-                    }
-                    if (row.get(col) != '#') {
-                        continue;
-                    }
-                    if (whiteNearby[r][col] - 1 < b) {
-                        ok = false;
-                        break outer;
-                    }
-                    if (blackNearby[r][col] + 1 > c) {
-                        ok = false;
-                        break outer;
-                    }
-                }
-            }
-
-            if (!ok) {
-                dead[i][j] = true;
-                continue;
-            }
-
-            // Apply flip: '.' -> '#'
-            grid.get(i).set(j, '#');
-            flips++;
-
-            // Update counts for all cells that consider (i,j) as neighbor
-            for (int r = r0; r <= r1; r++) {
-                for (int col = c0; col <= c1; col++) {
-                    if (r == i && col == j) {
-                        continue;
-                    }
-                    blackNearby[r][col] += 1;
-                    whiteNearby[r][col] -= 1;
-                    if (!dead[r][col] && grid.get(r).get(col) == '.') {
-                        // Reinsert with updated score (lazy PQ update)
-                        pq.add(new Candidate(r, col, blackNearby[r][col]));
-                    }
-                }
-            }
-        }
-
-        System.out.printf("firstTry flips applied: %d\n", flips);
-        System.out.printf("firstTry valid: %s\n", checkGrid(gridCase));
-    }
-
-    /**
      * Different approach: randomized greedy (GRASP-style).
      *
      * Instead of always taking the single best move, we repeatedly:
@@ -335,12 +182,17 @@ public class Barvanje {
      * found.
      */
     private static void secondTry(GridCase gridCase) {
+        // Extract grid dimension
         int n = gridCase.n;
+        // Extract distance constraint (how far to look for neighbors)
         int d = gridCase.d;
+        // Extract minimum white neighbors constraint
         int b = gridCase.b;
+        // Extract maximum black neighbors constraint
         int c = gridCase.c;
 
-        // Snapshot initial grid (so we can do many independent runs)
+        // Create a snapshot of the initial grid as a 2D char array
+        // This will be used as the starting point for each independent iteration
         char[][] base = new char[n][n];
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
@@ -348,8 +200,11 @@ public class Barvanje {
             }
         }
 
+        // Inner class to represent a candidate cell that can be flipped to black
         class Candidate {
+            // The linear index of the cell (i*n + j)
             final int idx;
+            // The score of this candidate (how many black neighbors it already has)
             final int score;
 
             Candidate(int idx, int score) {
@@ -358,201 +213,301 @@ public class Barvanje {
             }
         }
 
-        // Parameters you can tune
+        // Number of complete construction iterations to run
         int iterations = 200;
+        // Maximum size of the Restricted Candidate List (top candidates to pick from)
         int rclSize = 8;
-        Random rng = new Random(System.nanoTime());
 
+        // Track the best solution found across all iterations
+        // Initialize to -1 (no solution found yet)
         long bestPairs = -1;
+        // The grid that achieved the best score
         char[][] bestGrid = null;
-        int bestFlips = 0;
 
-        // Helper to compute neighbor counts for a given grid
-        // (counts are for all cells, but constraints are checked only for black cells)
+        // Run the randomized construction process 200 times
         for (int it = 0; it < iterations; it++) {
+            // Create a fresh copy of the base grid for this iteration
             char[][] g = new char[n][n];
+            // Loop through each row
             for (int i = 0; i < n; i++) {
+                // Use System.arraycopy to efficiently copy the entire row at once
                 System.arraycopy(base[i], 0, g[i], 0, n);
             }
 
+            // 2D array to track how many black cells are near each cell (within distance d)
             int[][] blackNearby = new int[n][n];
+            // 2D array to track how many white cells are near each cell (within distance d)
             int[][] whiteNearby = new int[n][n];
+            // Loop through each row
             for (int i = 0; i < n; i++) {
+                // Loop through each column
                 for (int j = 0; j < n; j++) {
+                    // Calculate the top boundary of the search region (don't go above row 0)
                     int r0 = Math.max(0, i - d);
+                    // Calculate the bottom boundary of the search region (don't go below row n-1)
                     int r1 = Math.min(n - 1, i + d);
+                    // Calculate the left boundary of the search region (don't go left of column 0)
                     int c0 = Math.max(0, j - d);
+                    // Calculate the right boundary of the search region (don't go right of column n-1)
                     int c1 = Math.min(n - 1, j + d);
+                    // Counter for black cells in the neighborhood
                     int bn = 0;
+                    // Counter for white cells in the neighborhood
                     int wn = 0;
+                    // Loop through all rows in the search region
                     for (int r = r0; r <= r1; r++) {
+                        // Loop through all columns in the search region
                         for (int col = c0; col <= c1; col++) {
+                            // Skip the cell itself (we don't count it as a neighbor)
                             if (r == i && col == j) {
                                 continue;
                             }
+                            // Get the character at this neighboring cell
                             char cell = g[r][col];
+                            // If it's a black cell, increment the black counter
                             if (cell == '#') {
                                 bn++;
-                            } else if (cell == '.') {
+                            }
+                            // If it's a white cell, increment the white counter
+                            else if (cell == '.') {
                                 wn++;
                             }
                         }
                     }
+                    // Store the count of black neighbors for cell (i,j)
                     blackNearby[i][j] = bn;
+                    // Store the count of white neighbors for cell (i,j)
                     whiteNearby[i][j] = wn;
                 }
             }
 
+            // Create a priority queue that orders candidates by score (highest first)
             PriorityQueue<Candidate> pq = new PriorityQueue<>(
+                    // Comparator that compares candidates by their score in descending order
                     Comparator.comparingInt((Candidate x) -> x.score).reversed());
+            // Array to mark cells that are permanently infeasible (dead)
             boolean[] dead = new boolean[n * n];
 
+            // Loop through each row
             for (int i = 0; i < n; i++) {
+                // Loop through each column
                 for (int j = 0; j < n; j++) {
+                    // Only add white cells as candidates for flipping to black
                     if (g[i][j] == '.') {
+                        // Convert 2D coordinates to linear index
                         int idx = i * n + j;
+                        // Add the candidate with score = number of black neighbors it has
                         pq.add(new Candidate(idx, blackNearby[i][j]));
                     }
                 }
             }
 
-            // Used to avoid duplicates while pulling an RCL
+            // Array that tracks which cells have been seen in the current RCL extraction
+            // Uses a "stamping" technique to avoid resetting the whole array each iteration
             int[] seenStamp = new int[n * n];
+            // Current "stamp" value - incremented each time we build a new RCL
             int stamp = 1;
 
-            int flips = 0;
+            // Main loop: continue until priority queue is empty or no valid moves remain
             while (!pq.isEmpty()) {
+                // Increment the stamp to mark a new RCL extraction phase
                 stamp++;
+                // If stamp reaches max integer value, reset it to avoid overflow
                 if (stamp == Integer.MAX_VALUE) {
+                    // Set stamp back to 1
                     stamp = 1;
+                    // Reset all seen stamps to 0
                     for (int k = 0; k < seenStamp.length; k++) {
                         seenStamp[k] = 0;
                     }
                 }
 
+                // Create the Restricted Candidate List (RCL) for this iteration
                 ArrayList<Candidate> rcl = new ArrayList<>(rclSize);
+                // Track all candidates we pulled from the queue (to push back later)
                 ArrayList<Candidate> pulled = new ArrayList<>(rclSize);
 
-                // Pull up to rclSize distinct current-best candidates
+                // Extract up to rclSize best candidates from the priority queue
                 while (!pq.isEmpty() && rcl.size() < rclSize) {
+                    // Pull the highest-scoring candidate from the queue
                     Candidate cand = pq.poll();
+                    // Track that we pulled this candidate
                     pulled.add(cand);
 
+                    // Get the linear index of this candidate
                     int idx = cand.idx;
+                    // If this cell is marked as dead (infeasible), skip it
                     if (dead[idx]) {
                         continue;
                     }
+                    // If this cell is already in the current RCL, skip it (avoid duplicates)
                     if (seenStamp[idx] == stamp) {
                         continue;
                     }
+                    // Convert linear index back to 2D coordinates
                     int i = idx / n;
+                    // Convert linear index back to 2D coordinates
                     int j = idx % n;
+                    // If the cell is no longer white, skip it (must have been changed)
                     if (g[i][j] != '.') {
                         continue;
                     }
 
+                    // Get the current score of this cell (number of black neighbors now)
                     int currentScore = blackNearby[i][j];
+                    // If the candidate's score is stale (doesn't match current state)
                     if (currentScore != cand.score) {
+                        // Re-insert it with the updated current score
                         pq.add(new Candidate(idx, currentScore));
+                        // Skip adding to RCL; we'll reconsider it on next pull
                         continue;
                     }
+                    // Mark this cell as seen in this RCL extraction
                     seenStamp[idx] = stamp;
+                    // Add the valid candidate to the RCL
                     rcl.add(cand);
                 }
 
-                // Push back non-used pulled elements (except ones we already reinserted with
-                // updated score)
+                // Push all pulled candidates back into the priority queue
                 for (Candidate cand : pulled) {
-                    // If it's still eligible, it will already be in pq; pushing duplicates is ok
-                    // (lazy PQ).
-                    // We only need to ensure we don't lose candidates by emptying pq too
-                    // aggressively.
+                    // Add back to queue (duplicates in PQ are acceptable; they just get skipped when pulled)
                     pq.add(cand);
                 }
 
+                // If the RCL is empty, no more valid moves are available
                 if (rcl.isEmpty()) {
+                    // Exit the main loop
                     break;
                 }
 
-                Candidate chosen = rcl.get(rng.nextInt(rcl.size()));
+                // Randomly pick one candidate from the RCL (the randomization step)
+                Candidate chosen = rcl.get((int)(Math.random() * rcl.size()));
+                // Get the linear index of the chosen candidate
                 int idx = chosen.idx;
+                // Convert to 2D row coordinate
                 int i = idx / n;
+                // Convert to 2D column coordinate
                 int j = idx % n;
 
+                // Double-check the cell is still valid before flipping
                 if (dead[idx] || g[i][j] != '.') {
+                    // If not, skip this iteration of the main loop
                     continue;
                 }
 
-                // Basic feasibility for the new black cell itself
+                // Check if the new black cell itself satisfies constraints:
+                // Must have at least b white neighbors
+                // Must have at most c black neighbors
                 if (whiteNearby[i][j] < b || blackNearby[i][j] > c) {
+                    // Mark this cell as dead (permanently infeasible)
                     dead[idx] = true;
+                    // Skip the flip
                     continue;
                 }
 
-                // Check neighborhood black cells constraints after flip
+                // Calculate the search region for nearby cells
+                // Top boundary
                 int r0 = Math.max(0, i - d);
+                // Bottom boundary
                 int r1 = Math.min(n - 1, i + d);
+                // Left boundary
                 int c0 = Math.max(0, j - d);
+                // Right boundary
                 int c1 = Math.min(n - 1, j + d);
+                // Flag to track if all neighboring black cells remain valid after flip
                 boolean ok = true;
+                // Labeled loop (so we can break out of nested loops)
                 outer: for (int r = r0; r <= r1; r++) {
+                    // Loop through all columns in the region
                     for (int col = c0; col <= c1; col++) {
+                        // Skip the cell being flipped
                         if (r == i && col == j) {
                             continue;
                         }
+                        // Only check cells that are currently black
                         if (g[r][col] != '#') {
                             continue;
                         }
+                        // After we flip (i,j) to black, this neighbor will lose one white neighbor
+                        // Check if it will still have at least b white neighbors
                         if (whiteNearby[r][col] - 1 < b) {
+                            // It won't; flip is infeasible
                             ok = false;
+                            // Break out of both loops
                             break outer;
                         }
+                        // After we flip (i,j) to black, this neighbor will gain one black neighbor
+                        // Check if it will still have at most c black neighbors
                         if (blackNearby[r][col] + 1 > c) {
+                            // It won't; flip is infeasible
                             ok = false;
+                            // Break out of both loops
                             break outer;
                         }
                     }
                 }
+                // If any neighboring black cell would be violated
                 if (!ok) {
+                    // Mark this cell as dead
                     dead[idx] = true;
+                    // Skip the flip
                     continue;
                 }
 
-                // Apply flip
+                // All checks passed; now apply the flip
+                // Change the cell from white to black
                 g[i][j] = '#';
-                flips++;
 
-                // Update counts for all cells that see (i,j) as neighbor
+                // Update neighbor counts for all cells near (i,j)
+                // Loop through all rows in the affected region
                 for (int r = r0; r <= r1; r++) {
+                    // Loop through all columns in the affected region
                     for (int col = c0; col <= c1; col++) {
+                        // Skip the cell being flipped
                         if (r == i && col == j) {
                             continue;
                         }
+                        // Increment black neighbor count (since we added a black cell nearby)
                         blackNearby[r][col] += 1;
+                        // Decrement white neighbor count (since we removed a white cell nearby)
                         whiteNearby[r][col] -= 1;
+                        // If this is a valid white cell candidate and not dead
                         if (!dead[r * n + col] && g[r][col] == '.') {
+                            // Re-add it to the queue with updated score
                             pq.add(new Candidate(r * n + col, blackNearby[r][col]));
                         }
                     }
                 }
             }
 
-            // Score this run
+            // Now score this iteration by counting close-black pairs
+            // Initialize pair counter to zero
             long pairs = 0;
+            // Loop through each row
             for (int i = 0; i < n; i++) {
+                // Loop through each column
                 for (int j = 0; j < n; j++) {
+                    // Only count for black cells
                     if (g[i][j] != '#') {
                         continue;
                     }
+                    // Calculate search region boundaries
                     int r0 = Math.max(0, i - d);
+                    // Calculate search region boundaries
                     int r1 = Math.min(n - 1, i + d);
+                    // Calculate search region boundaries
                     int c0 = Math.max(0, j - d);
+                    // Calculate search region boundaries
                     int c1 = Math.min(n - 1, j + d);
+                    // Loop through all rows in the region
                     for (int r = r0; r <= r1; r++) {
+                        // Loop through all columns in the region
                         for (int col = c0; col <= c1; col++) {
+                            // Skip the cell itself
                             if (r == i && col == j) {
                                 continue;
                             }
+                            // If the neighbor is also black, increment pair count
                             if (g[r][col] == '#') {
                                 pairs++;
                             }
@@ -560,25 +515,33 @@ public class Barvanje {
                     }
                 }
             }
+            // Divide by 2 because each pair is counted twice (once from each endpoint)
             pairs /= 2;
 
+            // If this iteration's score is better than the best so far
             if (pairs > bestPairs) {
+                // Update best score
                 bestPairs = pairs;
-                bestFlips = flips;
+                // Update best grid (store reference to this grid)
                 bestGrid = g;
             }
         }
 
-        // Write best found solution back into the List<List<Character>> grid
+        // Write the best solution found back into the original grid structure
         if (bestGrid != null) {
+            // Loop through each row
             for (int i = 0; i < n; i++) {
+                // Loop through each column
                 for (int j = 0; j < n; j++) {
+                    // Copy the char array value into the List<List<Character>> structure
                     gridCase.grid.get(i).set(j, bestGrid[i][j]);
                 }
             }
         }
 
+        // Print the best score found
         System.out.printf("secondTry best close-black pairs: %d\n", bestPairs);
+        // Verify that the result is a valid grid
         System.out.printf("secondTry valid: %s\n", checkGrid(gridCase));
     }
 
