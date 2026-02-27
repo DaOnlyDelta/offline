@@ -202,6 +202,8 @@ public class Barvanje {
                 row.set(j, grid[i][j]);
             }
         }
+
+        
     }
 
     /**
