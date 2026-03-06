@@ -29,18 +29,22 @@ public class Barvanje {
 
     public static void main(String[] args) {
         List<GridCase> grids = getGrids("Barvanje.txt");
-        int total = grids.size(); // 12
-        // Linear ramp: case 1 gets minT, case 12 gets maxT, sum ≈ 300s
-        double minT = 5000, maxT = 45000;
-        int i = 1;
-        for (GridCase gridCase : grids) {
-            long caseLimit = (long)(minT + (maxT - minT) * (i - 1.0) / (total - 1));
-            // displayGrid(gridCase);
-            int score = algorithm(gridCase, caseLimit);
-            // displayGrid(gridCase);
-            System.out.println(i + ": " + score + "  (" + caseLimit/1000 + "s)");
-            i++;
+        // Case i gets i hours: case 1 = 1h, case 2 = 2h, ..., case 12 = 12h (78h total).
+        // Patience: exit early if no improvement for 10 minutes, rolling leftover
+        // time to subsequent cases is NOT done here — each case has a fixed cap.
+        long hourMs = 3_600_000L;
+        long patienceMs = 600_000L; // 10 minutes
+        for (int i = 1; i <= grids.size(); i++) {
+            long caseLimit = i * hourMs;
+            long caseStart = System.currentTimeMillis();
+            // displayGrid(grids.get(i-1));
+            int score = algorithm(grids.get(i - 1), caseLimit, patienceMs);
+            // displayGrid(grids.get(i-1));
+            long used = System.currentTimeMillis() - caseStart;
+            System.out.println(i + ": " + score + "  (" + used/1000 + "s used, " + i + "h cap)");
         }
+        writeSolutions(grids, "Barvanje_solution.txt");
+        System.out.println("Solutions written to Barvanje_solution.txt");
     }
 
     private static List<GridCase> getGrids(String path) {
@@ -104,7 +108,7 @@ public class Barvanje {
      * @param timeLimit milliseconds budget for this case
      * @return          the best score (number of black–black neighbouring pairs)
      */
-    private static int algorithm(GridCase gridCase, long timeLimit) {
+    private static int algorithm(GridCase gridCase, long timeLimit, long patienceMs) {
         int n = gridCase.n;
         int d = gridCase.d;
         int b = gridCase.b;
@@ -196,6 +200,7 @@ public class Barvanje {
 
         boolean timeUp = false;
         int placements = 0; // counts total placements; used to throttle time checks
+        long lastImprovementTime = startTime;
 
         // Compute blockingCount once from the initial grid state.
         // From here on it is maintained incrementally (no full recompute each iteration).
@@ -214,7 +219,8 @@ public class Barvanje {
                 }
 
         // ── Main ruin-and-rebuild loop ────────────────────────────────────────────
-        while (!timeUp && System.currentTimeMillis() - startTime < timeLimit) {
+        while (!timeUp && System.currentTimeMillis() - startTime < timeLimit
+                       && System.currentTimeMillis() - lastImprovementTime < patienceMs) {
             iters++;
 
             // ── Phase 1: fill the bucket queue ───────────────────────────────────
@@ -338,6 +344,7 @@ public class Barvanje {
 
             if (currentScore > bestScore) {
                 bestScore = currentScore;
+                lastImprovementTime = System.currentTimeMillis();
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++)
                         bestGrid[i][j] = grid[i][j];
@@ -557,6 +564,25 @@ public class Barvanje {
             }
         }
         return pairs / 2;
+    }
+
+    private static void writeSolutions(List<GridCase> grids, String path) {
+        try (java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter(path))) {
+            pw.println("Barvanje");
+            pw.println(grids.size());
+            for (int i = 0; i < grids.size(); i++) {
+                GridCase g = grids.get(i);
+                pw.println();
+                pw.println(i + 1);
+                pw.println(g.n + " " + g.d + " " + g.b + " " + g.c);
+                for (List<Character> row : g.grid) {
+                    for (char cell : row) pw.print(cell);
+                    pw.println();
+                }
+            }
+        } catch (java.io.IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private static void displayGrid(GridCase grids) {
