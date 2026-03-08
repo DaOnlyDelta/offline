@@ -4,8 +4,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.*;
 
-public class Barvanje {
+public class BarvanjeParallel {
 
     private static class GridCase {
         final int n;
@@ -15,10 +16,10 @@ public class Barvanje {
         final List<List<Character>> grid;
 
         GridCase(int n, int d, int b, int c, List<List<Character>> grid) {
-            this.n = n; // Grid size
-            this.d = d; // Neighbour range
-            this.b = b; // Min neighbouring white blocks
-            this.c = c; // Max neighbouring black blocks
+            this.n = n;
+            this.d = d;
+            this.b = b;
+            this.c = c;
             this.grid = grid;
         }
 
@@ -27,34 +28,117 @@ public class Barvanje {
         }
     }
 
+    private static class AlgorithmResult {
+        final int score;
+        final char[][] bestGrid;
+        AlgorithmResult(int score, char[][] bestGrid) {
+            this.score = score;
+            this.bestGrid = bestGrid;
+        }
+    }
+
     public static void main(String[] args) {
         List<GridCase> grids = getGrids("Barvanje.txt");
-        // No hard time limit per case. Each case runs until no improvement
-        // is found for 5 minutes, then moves on to the next.
-        long patienceMs = 300_000L; // 5 minutes
-        for (int i = 1; i <= grids.size(); i++) {
-            long caseLimit = Long.MAX_VALUE;
-            long caseStart = System.currentTimeMillis();
-            int score = algorithm(grids.get(i - 1), caseLimit, patienceMs);
-            long used = System.currentTimeMillis() - caseStart;
-            System.out.println(i + ": " + score + "  (" + used/1000 + "s used)");
+        int startCase = 6;
+        int targetScore6 = 1_498_474;
+        // Per-case wall-clock limits: case i gets (2*i - 1) hours
+        long[] caseLimitHours = new long[grids.size()];
+        for (int i = 0; i < grids.size(); i++)
+            caseLimitHours[i] = (2L * (i + 1) - 1) * 3_600_000L;
+
+        int numThreads = Runtime.getRuntime().availableProcessors();
+        System.out.println("Using " + numThreads + " threads");
+        ExecutorService pool = Executors.newFixedThreadPool(numThreads);
+
+        for (int i = startCase; i <= grids.size(); i++) {
+            GridCase gc = grids.get(i - 1);
+            long caseLimit = caseLimitHours[i - 1];
+            long patienceMs = (i == 6) ? 300_000L : i * 1_200_000L; // case 6: 5min, others: i*20min
+
+            // Save original grid for resetting between rounds
+            char[][] origChars = new char[gc.n][gc.n];
+            for (int r = 0; r < gc.n; r++)
+                for (int j = 0; j < gc.n; j++)
+                    origChars[r][j] = gc.grid.get(r).get(j);
+
+            int roundBest = Integer.MIN_VALUE;
+            char[][] roundBestGrid = null;
+            int round = 0;
+            while (true) {
+                round++;
+                // Reset grid to original for each round
+                for (int r = 0; r < gc.n; r++)
+                    for (int j = 0; j < gc.n; j++)
+                        gc.grid.get(r).set(j, origChars[r][j]);
+
+                long caseStart = System.currentTimeMillis();
+                System.out.println("Case " + i + " round " + round + ": limit " + (caseLimit / 3_600_000L) + "h, patience " + (patienceMs / 60_000L) + "min");
+
+                // Launch one solver per thread, each with a different seed
+                List<Future<AlgorithmResult>> futures = new ArrayList<>();
+                for (int t = 0; t < numThreads; t++) {
+                    long seed = System.nanoTime() + t * 7919L;
+                    int threadId = t;
+                    futures.add(pool.submit(() -> algorithm(gc, caseLimit, patienceMs, seed, threadId)));
+                }
+
+                // Collect results, pick the best
+                int bestScore = Integer.MIN_VALUE;
+                char[][] bestGrid = null;
+                for (int t = 0; t < futures.size(); t++) {
+                    try {
+                        AlgorithmResult r = futures.get(t).get();
+                        System.out.println("  thread " + t + " → " + r.score);
+                        if (r.score > bestScore) {
+                            bestScore = r.score;
+                            bestGrid = r.bestGrid;
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                long used = System.currentTimeMillis() - caseStart;
+                System.out.println(i + ": " + bestScore + "  (" + used / 1000 + "s used, round " + round + ")");
+
+                if (bestScore > roundBest) {
+                    roundBest = bestScore;
+                    roundBestGrid = bestGrid;
+                    // Write best grid back to GridCase for solution output
+                    int n = gc.n;
+                    for (int r = 0; r < n; r++) {
+                        List<Character> row = gc.grid.get(r);
+                        for (int j = 0; j < n; j++)
+                            row.set(j, roundBestGrid[r][j]);
+                    }
+                    writeSolutions(grids, "Barvanje_solution2.txt");
+                    System.out.println("  → Barvanje_solution2.txt updated (best so far: " + roundBest + ")");
+                }
+
+                // For case 6: keep looping until target reached
+                if (i == 6 && roundBest < targetScore6) {
+                    System.out.println("  Target " + targetScore6 + " not reached (best=" + roundBest + "), retrying...");
+                    continue;
+                }
+                break; // target reached or not case 6
+            }
         }
-        writeSolutions(grids, "Barvanje_solution.txt");
-        System.out.println("Solutions written to Barvanje_solution.txt");
+
+        pool.shutdown();
+        System.out.println("All cases done.");
     }
 
     private static List<GridCase> getGrids(String path) {
         List<GridCase> grids = new ArrayList<>();
         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
-            System.out.println(br.readLine()); // optional title
+            System.out.println(br.readLine());
             int gridCount = Integer.parseInt(br.readLine());
 
             String line;
             for (int g = 0; g < gridCount; g++) {
                 while ((line = br.readLine()) != null && line.trim().isEmpty()) {
-                    // skip seperators
                 }
-                line = br.readLine(); // read again to skip the grid indexes
+                line = br.readLine();
                 if (line == null)
                     break;
 
@@ -82,50 +166,28 @@ public class Barvanje {
     }
 
     /**
-     * Ruin-and-rebuild heuristic solver.
-     *
-     * High-level idea:
-     *   1. Greedy fill: repeatedly place the white cell that currently has the most
-     *      black neighbours (maximises new pairs created), until no valid placement
-     *      remains.
-     *   2. Save the grid if this iteration's score beats the best seen so far.
-     *   3. Ruin: delete all black cells inside a randomly placed rectangular block,
-     *      then go back to step 1.  The ruin forces the algorithm out of local optima
-     *      by letting us rebuild a region from scratch with updated surroundings.
-     *   4. Every 20 iterations, hard-reset the working grid to the best grid found
-     *      so far (another anti-stagnation mechanism).
-     *   5. Repeat until the time limit is reached.
-     *
-     * A "valid" black cell must satisfy:
-     *   - neighWhites >= b  (at least b white neighbours within Chebyshev distance d)
-     *   - neighBlacks <= c  (at most c black neighbours within Chebyshev distance d)
-     *
-     * @param gridCase  the input grid, modified in-place to hold the best result
-     * @param timeLimit milliseconds budget for this case
-     * @return          the best score (number of black–black neighbouring pairs)
+     * Ruin-and-rebuild heuristic — identical to Barvanje.algorithm() but takes
+     * an explicit seed and returns an AlgorithmResult instead of modifying gridCase.
+     * This makes it safe to call from multiple threads on the same GridCase.
      */
-    private static int algorithm(GridCase gridCase, long timeLimit, long patienceMs) {
+    private static AlgorithmResult algorithm(GridCase gridCase, long timeLimit, long patienceMs, long seed, int threadId) {
         int n = gridCase.n;
         int d = gridCase.d;
         int b = gridCase.b;
         int c = gridCase.c;
 
-        // Working copy of the grid (char[][] is faster than List<List<Character>>).
-        // bestGrid stores the highest-scoring state seen across all iterations.
         char[][] bestGrid = new char[n][n];
         char[][] grid = new char[n][n];
+        // Read-only access to gridCase.grid — safe for concurrent threads
+        char[][] origGrid = new char[n][n];
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++) {
-                grid[i][j] = gridCase.grid.get(i).get(j);
-                bestGrid[i][j] = grid[i][j];
+                char ch = gridCase.grid.get(i).get(j);
+                grid[i][j] = ch;
+                bestGrid[i][j] = ch;
+                origGrid[i][j] = ch;
             }
 
-        // neighBlacks[i][j] = number of '#' cells within Chebyshev distance d of (i,j),
-        //                      NOT counting (i,j) itself.
-        // neighWhites[i][j] = same but for '.' cells.
-        // Red ('R') cells are ignored — they count as neither black nor white.
-        // These arrays are kept in sync incrementally throughout the algorithm
-        // (updated whenever a cell changes between '.' and '#').
         int[][] neighBlacks = new int[n][n];
         int[][] neighWhites = new int[n][n];
         for (int i = 0; i < n; i++) {
@@ -144,9 +206,6 @@ public class Barvanje {
             }
         }
 
-        // Score = number of ordered black–black pairs / 2.
-        // Each black cell contributes neighBlacks[i][j] to the sum, but every pair
-        // is counted twice (once from each end), so we halve at the end.
         int initScore = 0;
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
@@ -154,65 +213,38 @@ public class Barvanje {
                     initScore += neighBlacks[i][j];
         initScore /= 2;
 
-        Random rand = new Random(1337);
+        Random rand = new Random(seed);
         long startTime = System.currentTimeMillis();
         int bestScore = initScore;
         int currentScore = initScore;
         int iters = 0;
 
-        // Adaptive patience: for small grids the search space is exhausted
-        // quickly, so restart with a new seed sooner.
-        // effectivePatience triggers restarts; patienceMs is the overall stop condition.
         long effectivePatience = Math.max(2000L, Math.min(patienceMs / 3, (long) n * n / 4));
         long lastBestImprovement = startTime;
 
-        // maxBucket is the maximum possible neighBlacks value: the full (2d+1)×(2d+1)
-        // window minus the cell itself.  Used to size the bucket queue.
         int maxBucket = (2*d+1)*(2*d+1);
-
-        // For small grids/windows (n²×window < 100M ops) we re-insert white neighbours
-        // into the bucket queue immediately when their neighBlacks count increases during
-        // the fill propagation.  This keeps the queue perfectly up-to-date and removes
-        // the need for lazy re-insertion at pop time.
-        // For large grids/windows this would flood the queue with billions of entries
-        // (each of ~500K placements touching 6000+ neighbours), so we skip it and
-        // instead re-insert lazily only when a stale entry is discovered at pop time.
         boolean usePropReinsert = (long) n * n * maxBucket < 100_000_000L;
 
-        // blockingCount[i][j] = how many black cells in (i,j)'s window are "blocking".
-        // A black cell is "blocking" if placing another black in its window would push
-        // it over the c limit or under the b limit.  A white cell (i,j) with
-        // blockingCount > 0 cannot be flipped to black without invalidating an existing
-        // black neighbour.
         int[][] blockingCount = new int[n][n];
-        boolean[][] isBlocking = new boolean[n][n]; // true if this cell is currently blocking
+        boolean[][] isBlocking = new boolean[n][n];
 
-        // Bucket queue: bkt[p] holds cell codes (i*n+j) of white cells whose
-        // current neighBlacks == p.  This gives O(1) insert and pop, replacing the
-        // O(log N) PriorityQueue.  topBucket tracks the highest non-empty bucket so
-        // we always grab the best candidate first.
         int initCap = Math.max(16, n * n / maxBucket * 4);
         int[][] bkt = new int[maxBucket][initCap];
         int[] bktSz = new int[maxBucket];
 
-        // Periodic full reset is O(n²×window); skip it for large cases where that
-        // would cost several seconds per reset.
         long resetCost = (long) maxBucket * n * n;
         boolean useReset = resetCost < 200_000_000L;
 
         boolean timeUp = false;
-        int placements = 0; // counts total placements; used to throttle time checks
+        int placements = 0;
         long lastImprovementTime = startTime;
 
-        // Compute blockingCount once from the initial grid state.
-        // From here on it is maintained incrementally (no full recompute each iteration).
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
                 if (grid[i][j] == '#' && (neighBlacks[i][j] >= c || neighWhites[i][j] <= b)) {
                     isBlocking[i][j] = true;
                     int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
                     int c0 = Math.max(0,j-d), c1 = Math.min(n-1,j+d);
-                    // Tell every cell in this black cell's window that it has a blocking neighbour.
                     for (int k = r0; k <= r1; k++)
                         for (int l = c0; l <= c1; l++) {
                             if (k==i && l==j) continue;
@@ -226,16 +258,12 @@ public class Barvanje {
             iters++;
 
             // ── Patience-based restart ────────────────────────────────────────
-            // When no improvement has been found for effectivePatience ms,
-            // restart from the original grid with a fresh PRNG seed.  This
-            // gives the greedy completely different tie-breaking choices and
-            // lets it discover fundamentally different solution structures.
             if (System.currentTimeMillis() - lastImprovementTime >= effectivePatience) {
                 rand = new Random(System.nanoTime());
                 currentScore = initScore;
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++)
-                        grid[i][j] = gridCase.grid.get(i).get(j);
+                        grid[i][j] = origGrid[i][j];
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++) {
                         int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
@@ -271,52 +299,30 @@ public class Barvanje {
             }
 
             // ── Phase 1: fill the bucket queue ───────────────────────────────────
-            // Reset all bucket sizes, then insert every white cell into the bucket
-            // corresponding to its current neighBlacks count.
-            // Encoding: cell (i,j) → code = i*n+j  (decoded: i=code/n, j=code%n).
             for (int p = 0; p < maxBucket; p++) bktSz[p] = 0;
             int topBucket = 0;
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     if (grid[i][j] == '.') {
                         int p = neighBlacks[i][j];
-                        // Grow the bucket's backing array if full (amortised O(1)).
                         if (bktSz[p] == bkt[p].length) bkt[p] = java.util.Arrays.copyOf(bkt[p], bkt[p].length * 2);
                         bkt[p][bktSz[p]++] = i * n + j;
                         if (p > topBucket) topBucket = p;
                     }
 
             // ── Phase 2: greedy fill ──────────────────────────────────────────────
-            // Each iteration we place the white cell with the highest neighBlacks into
-            // black, because that maximises the number of new black–black pairs created
-            // by this single placement.  We stop when no eligible cell remains.
             while (true) {
-                // Walk topBucket downward until we find a non-empty bucket.
                 while (topBucket >= 0 && bktSz[topBucket] == 0) topBucket--;
-                if (topBucket < 0) break; // no candidates left → done filling
+                if (topBucket < 0) break;
 
-                // Pick a random entry from the top bucket (swap-and-pop, O(1)).
-                // Randomness here ensures different greedy paths across iterations
-                // even when many cells tie on neighBlacks, which is common.
                 int idx = rand.nextInt(bktSz[topBucket]);
                 int code = bkt[topBucket][idx];
                 bkt[topBucket][idx] = bkt[topBucket][--bktSz[topBucket]];
                 int pi = code / n, pj = code % n;
 
-                // ── Lazy deletion ─────────────────────────────────────────────────
-                // The queue may contain stale entries because:
-                //   (a) the cell was already placed ('#') earlier in this fill pass
-                //   (b) a previous placement made it ineligible (too few whites / too
-                //       many blacks / a blocker appeared in its window)
-                //   (c) its neighBlacks increased after insertion, so there is a newer
-                //       entry in a higher bucket (only relevant in lazy-reinsert mode)
-                // We discard (a) and (b) silently, and handle (c) by re-inserting at
-                // the correct bucket so it can be picked up in a future pop.
                 if (grid[pi][pj] != '.') continue;
                 if (neighWhites[pi][pj] < b || neighBlacks[pi][pj] > c || blockingCount[pi][pj] > 0) continue;
                 if (neighBlacks[pi][pj] != topBucket) {
-                    // Case (c): newer/higher-priority entry already exists for this cell
-                    // in propagation mode.  In lazy mode we must re-insert it ourselves.
                     if (!usePropReinsert) {
                         int p = neighBlacks[pi][pj];
                         if (p < maxBucket) {
@@ -329,33 +335,18 @@ public class Barvanje {
                 }
 
                 // ── Place the cell ────────────────────────────────────────────────
-                // Adding neighBlacks[pi][pj] to the score is equivalent to: for every
-                // existing black neighbour, one new pair is formed.  This is the
-                // incremental version of counting pairs — no full recount needed.
                 currentScore += neighBlacks[pi][pj];
                 grid[pi][pj] = '#';
 
-                // Amortised time check: calling System.currentTimeMillis() on every
-                // placement would add significant overhead.  Checking every 1024
-                // placements (bitmask trick) is cheap and precise enough.
                 if ((++placements & 1023) == 0 && System.currentTimeMillis() - startTime >= timeLimit) {
                     timeUp = true;
                     break;
                 }
 
-                // ── Propagate the placement to all cells in the window ────────────
-                // Every cell (k,l) within Chebyshev distance d of (pi,pj) now has one
-                // more black neighbour and one fewer white neighbour.
                 int r0 = Math.max(0,pi-d), r1 = Math.min(n-1,pi+d);
                 int c0 = Math.max(0,pj-d), c1 = Math.min(n-1,pj+d);
 
                 // ── Self-blocking check ───────────────────────────────────────────
-                // The placed cell itself may be at a constraint boundary (exactly b
-                // whites or exactly c blacks remaining).  The propagation loop below
-                // only checks EXISTING black neighbours, so (pi,pj) would never be
-                // marked here without this explicit check.  If omitted, a subsequent
-                // placement inside (pi,pj)'s window can legally pass the blockingCount
-                // guard and then silently reduce (pi,pj)'s white count below b.
                 if (!isBlocking[pi][pj] && (neighBlacks[pi][pj] >= c || neighWhites[pi][pj] <= b)) {
                     isBlocking[pi][pj] = true;
                     for (int x = r0; x <= r1; x++)
@@ -371,11 +362,6 @@ public class Barvanje {
                         neighBlacks[k][l]++;
                         neighWhites[k][l]--;
 
-                        // In propagation-reinsert mode: the white cell (k,l) just gained
-                        // a black neighbour, so its priority increased.  Re-insert it at
-                        // the new (higher) bucket so future pops see the updated priority.
-                        // In lazy mode this is skipped — the stale entry will be
-                        // re-inserted when it is eventually popped (see lazy deletion above).
                         if (usePropReinsert && grid[k][l] == '.') {
                             int p = neighBlacks[k][l];
                             if (p < maxBucket) {
@@ -385,11 +371,6 @@ public class Barvanje {
                             }
                         }
 
-                        // If an existing black cell (k,l) just became "blocking" (i.e.
-                        // its neighBlacks hit the limit c, or its neighWhites hit b),
-                        // mark it and increment blockingCount for every cell in its window.
-                        // Those cells can no longer be flipped to black without violating
-                        // the constraint of (k,l).
                         if (grid[k][l] == '#' && !isBlocking[k][l]) {
                             if (neighBlacks[k][l] >= c || neighWhites[k][l] <= b) {
                                 isBlocking[k][l] = true;
@@ -407,19 +388,18 @@ public class Barvanje {
             // ── End greedy fill ───────────────────────────────────────────────────
 
             // ── Phase 1b: swap-based local search ─────────────────────────────────
-            // Try removing one added black cell and placing a different white cell
-            // that becomes eligible after the removal.  Accept if net score improves.
-            // This finds improvements that pure ruin-and-rebuild misses because it
-            // can make coordinated single-cell swaps.
-            boolean improved = true;
+            // Skip swap search for large grids where it's too expensive
+            boolean useSwap = (long) n * n * (4*d+1) * (4*d+1) < 500_000_000L;
+            boolean improved = useSwap;
             while (improved) {
                 improved = false;
-                for (int si = 0; si < n && !timeUp; si++)
+                for (int si = 0; si < n && !timeUp; si++) {
+                    // Time check every row to avoid getting stuck
+                    if (System.currentTimeMillis() - startTime >= timeLimit) { timeUp = true; break; }
                     for (int sj = 0; sj < n && !timeUp; sj++) {
                         if (grid[si][sj] != '#') continue;
-                        int removeLoss = neighBlacks[si][sj]; // pairs lost by removing (si,sj)
+                        int removeLoss = neighBlacks[si][sj];
 
-                        // Temporarily remove (si,sj)
                         grid[si][sj] = '.';
                         int sr0 = Math.max(0,si-d), sr1 = Math.min(n-1,si+d);
                         int sc0 = Math.max(0,sj-d), sc1 = Math.min(n-1,sj+d);
@@ -430,20 +410,16 @@ public class Barvanje {
                                 neighWhites[k][l]++;
                             }
 
-                        // Try placing each white cell in the extended neighborhood
-                        // (within 2*d so they could interact with (si,sj)'s old neighbors)
-                        int bestGain = removeLoss; // must beat this to be worth it
+                        int bestGain = removeLoss;
                         int bestPi = -1, bestPj = -1;
                         int er0 = Math.max(0,si-2*d), er1 = Math.min(n-1,si+2*d);
                         int ec0 = Math.max(0,sj-2*d), ec1 = Math.min(n-1,sj+2*d);
                         for (int wi = er0; wi <= er1; wi++)
                             for (int wj = ec0; wj <= ec1; wj++) {
                                 if (grid[wi][wj] != '.') continue;
-                                // Check if (wi,wj) can be placed as black
                                 int wBlacks = neighBlacks[wi][wj];
                                 int wWhites = neighWhites[wi][wj];
                                 if (wWhites < b || wBlacks > c) continue;
-                                // Check blocking: would placing (wi,wj) violate any neighbor?
                                 boolean blocked = false;
                                 int wr0 = Math.max(0,wi-d), wr1 = Math.min(n-1,wi+d);
                                 int wc0 = Math.max(0,wj-d), wc1 = Math.min(n-1,wj+d);
@@ -464,10 +440,8 @@ public class Barvanje {
                             }
 
                         if (bestPi >= 0) {
-                            // Accept the swap: remove (si,sj), place (bestPi,bestPj)
                             currentScore -= removeLoss;
                             currentScore += bestGain;
-                            // Update blocking for removal of (si,sj)
                             if (isBlocking[si][sj]) {
                                 isBlocking[si][sj] = false;
                                 for (int k = sr0; k <= sr1; k++)
@@ -476,7 +450,6 @@ public class Barvanje {
                                         blockingCount[k][l]--;
                                     }
                             }
-                            // Update blocking for neighbors that might un-block
                             for (int k = sr0; k <= sr1; k++)
                                 for (int l = sc0; l <= sc1; l++) {
                                     if (k==si && l==sj) continue;
@@ -492,7 +465,6 @@ public class Barvanje {
                                             }
                                     }
                                 }
-                            // Place (bestPi,bestPj)
                             grid[bestPi][bestPj] = '#';
                             int pr0 = Math.max(0,bestPi-d), pr1 = Math.min(n-1,bestPi+d);
                             int pc0 = Math.max(0,bestPj-d), pc1 = Math.min(n-1,bestPj+d);
@@ -524,7 +496,6 @@ public class Barvanje {
                                 }
                             improved = true;
                         } else {
-                            // Revert removal of (si,sj)
                             grid[si][sj] = '#';
                             for (int k = sr0; k <= sr1; k++)
                                 for (int l = sc0; l <= sc1; l++) {
@@ -538,24 +509,21 @@ public class Barvanje {
                             timeUp = true;
                         }
                     }
+                } // end row loop
             }
 
             if (currentScore > bestScore) {
                 bestScore = currentScore;
                 lastImprovementTime = System.currentTimeMillis();
                 lastBestImprovement = lastImprovementTime;
+                long elapsed = (lastImprovementTime - startTime) / 1000;
+                System.out.println("    [t" + threadId + "] best=" + bestScore + "  (" + elapsed + "s)");
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++)
                         bestGrid[i][j] = grid[i][j];
             }
 
             // ── Phase 3 (every 20 iters): hard reset to best ─────────────────────
-            // After many ruin-rebuild cycles the working grid drifts away from the
-            // global best and incremental errors in blockingCount can accumulate.
-            // Resetting to bestGrid gives a clean, verified starting point and
-            // forces exploration of a different region of the search space.
-            // Skipped for large cases (n²×window ≥ 200M) where the full
-            // blockingCount recompute below would take too long.
             if (useReset && iters % 20 == 0) {
                 currentScore = bestScore;
                 for (int i = 0; i < n; i++)
@@ -563,8 +531,6 @@ public class Barvanje {
                         char prev = grid[i][j];
                         char next = bestGrid[i][j];
                         if (prev == next) continue;
-                        // Before changing the cell, undo its blocking contribution if any,
-                        // so blockingCount stays correct while we're mid-reset.
                         if (prev == '#' && isBlocking[i][j]) {
                             isBlocking[i][j] = false;
                             int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
@@ -586,9 +552,6 @@ public class Barvanje {
                                 neighWhites[k][l] -= diff;
                             }
                     }
-                // After touching many cells the incremental blockingCount updates above
-                // may have small errors (cells changed order matters for blocking status).
-                // Do a full clean recompute from the settled grid state.
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++) {
                         blockingCount[i][j] = 0;
@@ -606,163 +569,116 @@ public class Barvanje {
                                     blockingCount[k][l]++;
                                 }
                         }
-                continue; // skip ruin this iteration — go straight to next fill
+                continue;
             }
 
             // ── Phase 4: ruin ─────────────────────────────────────────────────────
-            // Erase a random rectangular block of black cells from the working grid.
-            // Block size is chosen randomly between n/8 and n/3, giving both fine and
-            // coarse perturbations.  Only cells that were added by the algorithm
-            // (not pre-existing '#' in the original input) are removed.
-            // All neighbour counts and blocking state are updated incrementally.
-            int minBlock = 1;
-            int maxBlock = Math.max(minBlock + 1, n / 3);
-            int blockSize = minBlock + rand.nextInt(maxBlock - minBlock + 1);
-            int startI = rand.nextInt(Math.max(1, n - blockSize + 1));
-            int startJ = rand.nextInt(Math.max(1, n - blockSize + 1));
+            // Alternate between different ruin strategies for diversity:
+            //   0 = rectangle ruin (original)
+            //   1 = scatter ruin (random fraction of all blacks)
+            //   2 = row/column band ruin
+            int ruinType = iters % 3;
 
-            for (int i = startI; i < startI + blockSize && i < n; i++)
-                for (int j = startJ; j < startJ + blockSize && j < n; j++)
-                    if (grid[i][j] == '#' && gridCase.grid.get(i).get(j) != '#') {
-                        // Remove the pair contribution of this cell before erasing it.
-                        // neighBlacks[i][j] equals the number of existing black neighbours,
-                        // each of which forms one pair with (i,j) — sum = pairs lost.
-                        currentScore -= neighBlacks[i][j];
-
-                        // If this cell was blocking its neighbours, undo that contribution
-                        // before we remove it so blockingCount stays accurate.
-                        if (isBlocking[i][j]) {
-                            isBlocking[i][j] = false;
+            if (ruinType == 1) {
+                // Scatter ruin: remove a random 5-40% of placed black cells
+                double frac = 0.05 + rand.nextDouble() * 0.35;
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++)
+                        if (grid[i][j] == '#' && origGrid[i][j] != '#' && rand.nextDouble() < frac) {
+                            currentScore -= neighBlacks[i][j];
+                            if (isBlocking[i][j]) {
+                                isBlocking[i][j] = false;
+                                int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
+                                int c0 = Math.max(0,j-d), c1 = Math.min(n-1,j+d);
+                                for (int k = r0; k <= r1; k++)
+                                    for (int l = c0; l <= c1; l++) {
+                                        if (k==i && l==j) continue;
+                                        blockingCount[k][l]--;
+                                    }
+                            }
+                            grid[i][j] = '.';
                             int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
                             int c0 = Math.max(0,j-d), c1 = Math.min(n-1,j+d);
                             for (int k = r0; k <= r1; k++)
                                 for (int l = c0; l <= c1; l++) {
                                     if (k==i && l==j) continue;
-                                    blockingCount[k][l]--;
+                                    neighBlacks[k][l]--;
+                                    neighWhites[k][l]++;
+                                    if (grid[k][l] == '#' && isBlocking[k][l]
+                                            && neighBlacks[k][l] < c && neighWhites[k][l] > b) {
+                                        isBlocking[k][l] = false;
+                                        int r2 = Math.max(0,k-d), r3 = Math.min(n-1,k+d);
+                                        int c2 = Math.max(0,l-d), c3 = Math.min(n-1,l+d);
+                                        for (int x = r2; x <= r3; x++)
+                                            for (int y = c2; y <= c3; y++) {
+                                                if (x==k && y==l) continue;
+                                                blockingCount[x][y]--;
+                                            }
+                                    }
                                 }
                         }
-
-                        grid[i][j] = '.';
-
-                        int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
-                        int c0 = Math.max(0,j-d), c1 = Math.min(n-1,j+d);
-                        for (int k = r0; k <= r1; k++)
-                            for (int l = c0; l <= c1; l++) {
-                                if (k==i && l==j) continue;
-                                neighBlacks[k][l]--;
-                                neighWhites[k][l]++;
-                                // A black neighbour (k,l) that was previously blocking
-                                // may now be safe again because it just lost a black
-                                // neighbour (us).  If it no longer violates either
-                                // constraint, un-mark it and decrement blockingCount
-                                // for everything in its window.
-                                if (grid[k][l] == '#' && isBlocking[k][l]
-                                        && neighBlacks[k][l] < c && neighWhites[k][l] > b) {
-                                    isBlocking[k][l] = false;
-                                    int r2 = Math.max(0,k-d), r3 = Math.min(n-1,k+d);
-                                    int c2 = Math.max(0,l-d), c3 = Math.min(n-1,l+d);
-                                    for (int x = r2; x <= r3; x++)
-                                        for (int y = c2; y <= c3; y++) {
-                                            if (x==k && y==l) continue;
-                                            blockingCount[x][y]--;
-                                        }
-                                }
-                            }
+            } else {
+                // Rectangle ruin (type 0) or band ruin (type 2)
+                int minBlock = 1;
+                int maxBlock = Math.max(minBlock + 1, n / 2);
+                int blockH, blockW, startI, startJ;
+                if (ruinType == 2) {
+                    // Band: full-width or full-height strip
+                    if (rand.nextBoolean()) {
+                        blockH = 1 + rand.nextInt(Math.max(1, n / 4));
+                        blockW = n;
+                    } else {
+                        blockH = n;
+                        blockW = 1 + rand.nextInt(Math.max(1, n / 4));
                     }
+                } else {
+                    int blockSize = minBlock + rand.nextInt(maxBlock - minBlock + 1);
+                    blockH = blockSize;
+                    blockW = blockSize;
+                }
+                startI = rand.nextInt(Math.max(1, n - blockH + 1));
+                startJ = rand.nextInt(Math.max(1, n - blockW + 1));
+
+                for (int i = startI; i < startI + blockH && i < n; i++)
+                    for (int j = startJ; j < startJ + blockW && j < n; j++)
+                        if (grid[i][j] == '#' && origGrid[i][j] != '#') {
+                            currentScore -= neighBlacks[i][j];
+                            if (isBlocking[i][j]) {
+                                isBlocking[i][j] = false;
+                                int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
+                                int c0 = Math.max(0,j-d), c1 = Math.min(n-1,j+d);
+                                for (int k = r0; k <= r1; k++)
+                                    for (int l = c0; l <= c1; l++) {
+                                        if (k==i && l==j) continue;
+                                        blockingCount[k][l]--;
+                                    }
+                            }
+                            grid[i][j] = '.';
+                            int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
+                            int c0 = Math.max(0,j-d), c1 = Math.min(n-1,j+d);
+                            for (int k = r0; k <= r1; k++)
+                                for (int l = c0; l <= c1; l++) {
+                                    if (k==i && l==j) continue;
+                                    neighBlacks[k][l]--;
+                                    neighWhites[k][l]++;
+                                    if (grid[k][l] == '#' && isBlocking[k][l]
+                                            && neighBlacks[k][l] < c && neighWhites[k][l] > b) {
+                                        isBlocking[k][l] = false;
+                                        int r2 = Math.max(0,k-d), r3 = Math.min(n-1,k+d);
+                                        int c2 = Math.max(0,l-d), c3 = Math.min(n-1,l+d);
+                                        for (int x = r2; x <= r3; x++)
+                                            for (int y = c2; y <= c3; y++) {
+                                                if (x==k && y==l) continue;
+                                                blockingCount[x][y]--;
+                                            }
+                                    }
+                                }
+                        }
+            }
         }
         // ── End main loop ─────────────────────────────────────────────────────────
 
-        // Write the best grid back into gridCase so the caller can display/verify it.
-        for (int i = 0; i < n; i++) {
-            List<Character> row = gridCase.grid.get(i);
-            for (int j = 0; j < n; j++)
-                row.set(j, bestGrid[i][j]);
-        }
-        return bestScore;
-    }
-
-    /**
-     * Validity per statement: every BLACK cell must have at least b nearby WHITE
-     * cells ('.')
-     * and at most c nearby BLACK cells ('#') within Chebyshev distance d (excluding
-     * itself).
-     * Red cells ('R') are ignored (neither white nor black).
-     */
-    private static boolean checkGrid(GridCase grids) {
-        List<List<Character>> grid = grids.grid;
-        int n = grids.n;
-
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                if (grid.get(i).get(j) != '#') {
-                    continue;
-                }
-
-                int blackNearby = 0;
-                int whiteNearby = 0;
-
-                int r0 = Math.max(0, i - grids.d);
-                int r1 = Math.min(n - 1, i + grids.d);
-                int c0 = Math.max(0, j - grids.d);
-                int c1 = Math.min(n - 1, j + grids.d);
-
-                for (int r = r0; r <= r1; r++) {
-                    List<Character> row = grid.get(r);
-                    for (int c = c0; c <= c1; c++) {
-                        if (r == i && c == j) {
-                            continue;
-                        }
-                        char cell = row.get(c);
-                        if (cell == '#') {
-                            blackNearby++;
-                        } else if (cell == '.') {
-                            whiteNearby++;
-                        }
-                    }
-                }
-
-                if (whiteNearby < grids.b) {
-                    System.out.printf("Not enough white cells around BLACK [%d, %d]: %d < %d\n", i, j, whiteNearby,
-                            grids.b);
-                    return false;
-                }
-                if (blackNearby > grids.c) {
-                    System.out.printf("Too many black cells around BLACK [%d, %d]: %d > %d\n", i, j, blackNearby,
-                            grids.c);
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private static long countCloseBlackPairs(GridCase gridCase) {
-        List<List<Character>> grid = gridCase.grid;
-        int n = gridCase.n;
-        long pairs = 0;
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                if (grid.get(i).get(j) != '#') {
-                    continue;
-                }
-                int r0 = Math.max(0, i - gridCase.d);
-                int r1 = Math.min(n - 1, i + gridCase.d);
-                int c0 = Math.max(0, j - gridCase.d);
-                int c1 = Math.min(n - 1, j + gridCase.d);
-                for (int r = r0; r <= r1; r++) {
-                    List<Character> row = grid.get(r);
-                    for (int c = c0; c <= c1; c++) {
-                        if (r == i && c == j) {
-                            continue;
-                        }
-                        if (row.get(c) == '#') {
-                            pairs++;
-                        }
-                    }
-                }
-            }
-        }
-        return pairs / 2;
+        return new AlgorithmResult(bestScore, bestGrid);
     }
 
     private static void writeSolutions(List<GridCase> grids, String path) {
@@ -782,28 +698,5 @@ public class Barvanje {
         } catch (java.io.IOException e) {
             e.printStackTrace();
         }
-    }
-
-    private static void displayGrid(GridCase grids) {
-        System.out.printf(grids.getNumbers());
-        for (List<Character> row : grids.grid) {
-            for (char cell : row) {
-                switch (cell) {
-                    case '.':
-                        System.out.print("⬜ ");
-                        break;
-                    case '#':
-                        System.out.print("\u2B1B ");
-                        break;
-                    case 'R':
-                        System.out.print("🟥 ");
-                        break;
-                    default:
-                        System.out.print(cell + " ");
-                }
-            }
-            System.out.println();
-        }
-        System.out.println();
     }
 }

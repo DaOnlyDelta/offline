@@ -1,0 +1,71 @@
+Barvanje
+Using 12 threads
+Case 6 round 1: limit 11h, patience 5min
+    [t9] best=1391412  (14s)
+    [t1] best=1393097  (18s)
+    [t7] best=1394156  (24s)
+    [t0] best=1393348  (24s)
+    [t6] best=1395271  (23s)
+    [t10] best=1395523  (24s)
+    [t2] best=1394318  (24s)
+    [t5] best=1393696  (26s)
+    [t1] best=1397827  (26s)
+    [t3] best=1394556  (27s)
+    [t0] best=1396008  (29s)
+    [t8] best=1396212  (29s)
+    [t9] best=1397778  (30s)
+    [t6] best=1401936  (30s)
+    [t4] best=1395490  (31s)
+    [t11] best=1395900  (33s)
+    [t7] best=1401070  (33s)
+    [t1] best=1399556  (37s)
+    [t2] best=1404592  (37s)
+    [t9] best=1404512  (38s)
+    [t3] best=1394641  (38s)
+    [t8] best=1401069  (39s)
+    [t9] best=1406784  (42s)
+    [t7] best=1411715  (42s)
+    [t11] best=1398191  (43s)
+    [t7] best=1412491  (46s)
+    [t1] best=1400219  (46s)
+    [t5] best=1394000  (46s)
+    [t2] best=1407843  (47s)
+    [t10] best=1396956  (47s)
+    [t5] best=1407624  (53s)
+    [t2] best=1423235  (54s)
+    [t10] best=1408673  (54s)
+    [t11] best=1412253  (54s)
+    [t11] best=1417190  (60s)
+    [t4] best=1396038  (81s)
+    [t4] best=1408405  (86s)
+    [t3] best=1396893  (87s)
+    [t4] best=1411319  (92s)
+    [t3] best=1409161  (94s)
+    [t0] best=1398468  (164s)
+    [t0] best=1420678  (173s)
+  thread 0 → 1420678
+  thread 1 → 1400219
+  thread 2 → 1423235
+  thread 3 → 1409161
+  thread 4 → 1411319
+  thread 5 → 1407624
+  thread 6 → 1401936
+  thread 7 → 1412491
+  thread 8 → 1401069
+  thread 9 → 1406784
+  thread 10 → 1408673
+  thread 11 → 1417190
+6: 1423235  (474s used, round 1)
+  → Barvanje_solution2.txt updated (best so far: 1423235)
+  Target 1498474 not reached (best=1423235), retrying...
+Case 6 round 2: limit 11h, patience 5min
+    [t11] best=1396219  (11s)
+    [t5] best=1395096  (11s)
+    [t0] best=1393762  (9s)
+    [t7] best=1394144  (10s)
+    [t8] best=1395996  (10s)
+    [t3] best=1394821  (10s)
+    [t4] best=1395824  (10s)
+    [t1] best=1395032  (12s)
+    [t2] best=1395025  (13s)
+    [t6] best=1394976  (13s)

@@ -1,0 +1,93 @@
+Barvanje
+Using 12 threads
+Case 1: limit 1h, patience 10min
+  thread 0 → 2149
+  thread 1 → 2145
+  thread 2 → 2147
+  thread 3 → 2154
+  thread 4 → 2154
+  thread 5 → 2148
+  thread 6 → 2150
+  thread 7 → 2148
+  thread 8 → 2152
+  thread 9 → 2154
+  thread 10 → 2148
+  thread 11 → 2145
+1: 2154  (1478s used)
+  → Barvanje_solution.txt updated
+Case 2: limit 3h, patience 20min
+  thread 0 → 15368
+  thread 1 → 15354
+  thread 2 → 15337
+  thread 3 → 15338
+  thread 4 → 15310
+  thread 5 → 15375
+  thread 6 → 15275
+  thread 7 → 15334
+  thread 8 → 15331
+  thread 9 → 15329
+  thread 10 → 15338
+  thread 11 → 15279
+2: 15375  (4803s used)
+  → Barvanje_solution.txt updated
+Case 3: limit 5h, patience 30min
+  thread 0 → 45439
+  thread 1 → 45604
+  thread 2 → 45339
+  thread 3 → 45408
+  thread 4 → 45452
+  thread 5 → 45474
+  thread 6 → 45499
+  thread 7 → 45464
+  thread 8 → 45366
+  thread 9 → 45386
+  thread 10 → 45507
+  thread 11 → 45475
+3: 45604  (7980s used)
+  → Barvanje_solution.txt updated
+Case 4: limit 7h, patience 40min
+  thread 0 → 25739
+  thread 1 → 25761
+  thread 2 → 25778
+  thread 3 → 25771
+  thread 4 → 25808
+  thread 5 → 25749
+  thread 6 → 25752
+  thread 7 → 25769
+  thread 8 → 25797
+  thread 9 → 25770
+  thread 10 → 25777
+  thread 11 → 25791
+4: 25808  (19340s used)
+  → Barvanje_solution.txt updated
+Case 5: limit 9h, patience 50min
+  thread 0 → 196892
+  thread 1 → 196986
+  thread 2 → 196802
+  thread 3 → 196800
+  thread 4 → 196791
+  thread 5 → 196910
+  thread 6 → 196676
+  thread 7 → 196786
+  thread 8 → 196650
+  thread 9 → 196903
+  thread 10 → 196669
+  thread 11 → 196863
+5: 196986  (32400s used)
+  → Barvanje_solution.txt updated
+Case 6: limit 11h, patience 60min
+  thread 0 → 1409832
+  thread 1 → 1407735
+  thread 2 → 1431507
+  thread 3 → 1412021
+  thread 4 → 1413575
+  thread 5 → 1420144
+  thread 6 → 1406828
+  thread 7 → 1406310
+  thread 8 → 1406169
+  thread 9 → 1420069
+  thread 10 → 1407105
+  thread 11 → 1408429
+6: 1431507  (3720s used)
+  → Barvanje_solution.txt updated
+Case 7: limit 13h, patience 70min
