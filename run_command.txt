@@ -1,0 +1,2 @@
+javac BarvanjeParallel.java
+java -Xmx4g BarvanjeParallel > log.txt 2>&1
