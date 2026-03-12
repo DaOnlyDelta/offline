@@ -29,99 +29,78 @@ public class BarvanjeParallel {
     }
 
     private static class AlgorithmResult {
-        final int score;
+        final long score;
         final char[][] bestGrid;
-        AlgorithmResult(int score, char[][] bestGrid) {
+        AlgorithmResult(long score, char[][] bestGrid) {
             this.score = score;
             this.bestGrid = bestGrid;
         }
     }
 
-    public static void main(String[] args) {
-        List<GridCase> grids = getGrids("Barvanje.txt");
-        int startCase = 6;
-        int targetScore6 = 1_498_474;
-        // Per-case wall-clock limits: case i gets (2*i - 1) hours
-        long[] caseLimitHours = new long[grids.size()];
-        for (int i = 0; i < grids.size(); i++)
-            caseLimitHours[i] = (2L * (i + 1) - 1) * 3_600_000L;
+    public static void main(String[] args) throws Exception {
+        List<GridCase> allGrids = getGrids("Barvanje.txt");
+        // Cases 6–12 (0-based indices 5–11)
+        List<GridCase> grids = new ArrayList<>(allGrids.subList(5, allGrids.size()));
+        int count = grids.size(); // 7
 
+        // Linear time ramp: case 6 = 1 unit, case 7 = 2 units, ..., case 12 = 7 units.
+        // Total = 28 units = 1 week wall time (cases run sequentially).
+        long weekMs = 7L * 24 * 3_600_000L;
+        long unit = weekMs / 28; // ≈21,600,000 ms ≈6 hours
+        long[] limits = new long[count];
+        for (int i = 0; i < count; i++) limits[i] = (long)(i + 1) * unit;
+
+        // All available threads work on ONE case at a time, each with a different seed.
         int numThreads = Runtime.getRuntime().availableProcessors();
-        System.out.println("Using " + numThreads + " threads");
         ExecutorService pool = Executors.newFixedThreadPool(numThreads);
 
-        for (int i = startCase; i <= grids.size(); i++) {
-            GridCase gc = grids.get(i - 1);
-            long caseLimit = caseLimitHours[i - 1];
-            long patienceMs = (i == 6) ? 300_000L : i * 1_200_000L; // case 6: 5min, others: i*20min
+        System.out.println("Using " + numThreads + " threads per case.");
+        for (int i = 0; i < count; i++)
+            System.out.printf("  Case %d: cap = %.1fh%n", i + 6, limits[i] / 3_600_000.0);
+        System.out.println();
 
-            // Save original grid for resetting between rounds
-            char[][] origChars = new char[gc.n][gc.n];
-            for (int r = 0; r < gc.n; r++)
-                for (int j = 0; j < gc.n; j++)
-                    origChars[r][j] = gc.grid.get(r).get(j);
 
-            int roundBest = Integer.MIN_VALUE;
-            char[][] roundBestGrid = null;
-            int round = 0;
-            while (true) {
-                round++;
-                // Reset grid to original for each round
-                for (int r = 0; r < gc.n; r++)
-                    for (int j = 0; j < gc.n; j++)
-                        gc.grid.get(r).set(j, origChars[r][j]);
+        for (int k = 0; k < count; k++) {
+            GridCase gc = grids.get(k);
+            long caseLimit = limits[k];
+            long patienceMs = caseLimit / 3; // 1/3 of the case budget
+            int caseNum = k + 6;
+            System.out.printf("Starting case %d (cap=%.1fh, patience=%.1fh)...%n",
+                caseNum, caseLimit / 3_600_000.0, patienceMs / 3_600_000.0);
 
-                long caseStart = System.currentTimeMillis();
-                System.out.println("Case " + i + " round " + round + ": limit " + (caseLimit / 3_600_000L) + "h, patience " + (patienceMs / 60_000L) + "min");
+            long caseStart = System.currentTimeMillis();
 
-                // Launch one solver per thread, each with a different seed
-                List<Future<AlgorithmResult>> futures = new ArrayList<>();
-                for (int t = 0; t < numThreads; t++) {
-                    long seed = System.nanoTime() + t * 7919L;
-                    int threadId = t;
-                    futures.add(pool.submit(() -> algorithm(gc, caseLimit, patienceMs, seed, threadId)));
-                }
-
-                // Collect results, pick the best
-                int bestScore = Integer.MIN_VALUE;
-                char[][] bestGrid = null;
-                for (int t = 0; t < futures.size(); t++) {
-                    try {
-                        AlgorithmResult r = futures.get(t).get();
-                        System.out.println("  thread " + t + " → " + r.score);
-                        if (r.score > bestScore) {
-                            bestScore = r.score;
-                            bestGrid = r.bestGrid;
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-
-                long used = System.currentTimeMillis() - caseStart;
-                System.out.println(i + ": " + bestScore + "  (" + used / 1000 + "s used, round " + round + ")");
-
-                if (bestScore > roundBest) {
-                    roundBest = bestScore;
-                    roundBestGrid = bestGrid;
-                    // Write best grid back to GridCase for solution output
-                    int n = gc.n;
-                    for (int r = 0; r < n; r++) {
-                        List<Character> row = gc.grid.get(r);
-                        for (int j = 0; j < n; j++)
-                            row.set(j, roundBestGrid[r][j]);
-                    }
-                    writeSolutions(grids, "Barvanje_solution2.txt");
-                    System.out.println("  → Barvanje_solution2.txt updated (best so far: " + roundBest + ")");
-                }
-
-                // For case 6: keep looping until target reached
-                if (i == 6 && roundBest < targetScore6) {
-                    System.out.println("  Target " + targetScore6 + " not reached (best=" + roundBest + "), retrying...");
-                    continue;
-                }
-                break; // target reached or not case 6
+            // Launch one solver per thread, each with a unique seed
+            List<Future<AlgorithmResult>> futures = new ArrayList<>();
+            for (int t = 0; t < numThreads; t++) {
+                final long seed = System.nanoTime() + t * 7919L;
+                final int threadId = t;
+                futures.add(pool.submit(() -> algorithm(gc, caseLimit, patienceMs, seed, threadId)));
             }
+
+            // Collect and pick the best result across all threads
+            AlgorithmResult best = null;
+            for (int t = 0; t < numThreads; t++) {
+                AlgorithmResult r = futures.get(t).get();
+                if (best == null || r.score > best.score) best = r;
+            }
+
+            long usedMs = System.currentTimeMillis() - caseStart;
+            System.out.printf("Case %d done: %d  (%.2fh used / %.2fh cap)%n",
+                caseNum, best.score, usedMs / 3_600_000.0, caseLimit / 3_600_000.0);
+            System.out.flush();
+
+            // Write best grid back into the GridCase for solution output
+            for (int r = 0; r < gc.n; r++) {
+                List<Character> row = gc.grid.get(r);
+                for (int j = 0; j < gc.n; j++)
+                    row.set(j, best.bestGrid[r][j]);
+            }
+
+            // Write partial results after each case so a kill doesn't lose everything
+            writeSolutions(grids.subList(0, k + 1), "Barvanje_solution2.txt", 6);
+            System.out.println("  → Barvanje_solution2.txt updated");
+            System.out.flush();
         }
 
         pool.shutdown();
@@ -206,7 +185,7 @@ public class BarvanjeParallel {
             }
         }
 
-        int initScore = 0;
+        long initScore = 0;
         for (int i = 0; i < n; i++)
             for (int j = 0; j < n; j++)
                 if (grid[i][j] == '#')
@@ -215,8 +194,8 @@ public class BarvanjeParallel {
 
         Random rand = new Random(seed);
         long startTime = System.currentTimeMillis();
-        int bestScore = initScore;
-        int currentScore = initScore;
+        long bestScore = initScore;
+        long currentScore = initScore;
         int iters = 0;
 
         long effectivePatience = Math.max(2000L, Math.min(patienceMs / 3, (long) n * n / 4));
@@ -251,6 +230,9 @@ public class BarvanjeParallel {
                             blockingCount[k][l]++;
                         }
                 }
+
+        // Swap local search: O(n² × (4d+1)²) per sweep — skip for huge windows.
+        boolean useSwap = (long) n * n * (4*d+1) * (4*d+1) < 500_000_000L;
 
         // ── Main ruin-and-rebuild loop ────────────────────────────────────────────
         while (!timeUp && System.currentTimeMillis() - startTime < timeLimit
@@ -388,8 +370,6 @@ public class BarvanjeParallel {
             // ── End greedy fill ───────────────────────────────────────────────────
 
             // ── Phase 1b: swap-based local search ─────────────────────────────────
-            // Skip swap search for large grids where it's too expensive
-            boolean useSwap = (long) n * n * (4*d+1) * (4*d+1) < 500_000_000L;
             boolean improved = useSwap;
             while (improved) {
                 improved = false;
@@ -518,6 +498,7 @@ public class BarvanjeParallel {
                 lastBestImprovement = lastImprovementTime;
                 long elapsed = (lastImprovementTime - startTime) / 1000;
                 System.out.println("    [t" + threadId + "] best=" + bestScore + "  (" + elapsed + "s)");
+                System.out.flush();
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++)
                         bestGrid[i][j] = grid[i][j];
@@ -681,14 +662,14 @@ public class BarvanjeParallel {
         return new AlgorithmResult(bestScore, bestGrid);
     }
 
-    private static void writeSolutions(List<GridCase> grids, String path) {
+    private static void writeSolutions(List<GridCase> grids, String path, int caseOffset) {
         try (java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter(path))) {
             pw.println("Barvanje");
             pw.println(grids.size());
             for (int i = 0; i < grids.size(); i++) {
                 GridCase g = grids.get(i);
                 pw.println();
-                pw.println(i + 1);
+                pw.println(i + caseOffset);
                 pw.println(g.n + " " + g.d + " " + g.b + " " + g.c);
                 for (List<Character> row : g.grid) {
                     for (char cell : row) pw.print(cell);
