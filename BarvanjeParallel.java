@@ -198,7 +198,8 @@ public class BarvanjeParallel {
         long currentScore = initScore;
         int iters = 0;
 
-        long effectivePatience = Math.max(2000L, Math.min(patienceMs / 3, (long) n * n / 4));
+        long restartScale = (long) n * n * Math.max(1, 2 * d + 1);
+        long effectivePatience = Math.max(30_000L, Math.min(patienceMs / 3, restartScale / 2));
         long lastBestImprovement = startTime;
 
         int maxBucket = (2*d+1)*(2*d+1);
@@ -242,10 +243,28 @@ public class BarvanjeParallel {
             // ── Patience-based restart ────────────────────────────────────────
             if (System.currentTimeMillis() - lastImprovementTime >= effectivePatience) {
                 rand = new Random(System.nanoTime());
-                currentScore = initScore;
-                for (int i = 0; i < n; i++)
-                    for (int j = 0; j < n; j++)
-                        grid[i][j] = origGrid[i][j];
+                // Usually restart from bestGrid and only partially ruin it.
+                // This keeps valuable structure while still escaping local minima.
+                boolean restartFromBest = bestScore > initScore;
+                if (restartFromBest) {
+                    currentScore = bestScore;
+                    for (int i = 0; i < n; i++)
+                        for (int j = 0; j < n; j++)
+                            grid[i][j] = bestGrid[i][j];
+
+                    // Remove a random subset of added black cells (10-35%).
+                    double frac = 0.10 + rand.nextDouble() * 0.25;
+                    for (int i = 0; i < n; i++)
+                        for (int j = 0; j < n; j++)
+                            if (grid[i][j] == '#' && origGrid[i][j] != '#' && rand.nextDouble() < frac)
+                                grid[i][j] = '.';
+                } else {
+                    currentScore = initScore;
+                    for (int i = 0; i < n; i++)
+                        for (int j = 0; j < n; j++)
+                            grid[i][j] = origGrid[i][j];
+                }
+
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++) {
                         int r0 = Math.max(0,i-d), r1 = Math.min(n-1,i+d);
@@ -265,6 +284,13 @@ public class BarvanjeParallel {
                         blockingCount[i][j] = 0;
                         isBlocking[i][j] = false;
                     }
+                currentScore = 0;
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++)
+                        if (grid[i][j] == '#')
+                            currentScore += neighBlacks[i][j];
+                currentScore /= 2;
+
                 for (int i = 0; i < n; i++)
                     for (int j = 0; j < n; j++)
                         if (grid[i][j] == '#' && (neighBlacks[i][j] >= c || neighWhites[i][j] <= b)) {

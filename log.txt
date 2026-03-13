@@ -1,0 +1,54 @@
+Barvanje
+Using 16 threads per case.
+  Case 6: cap = 6.0h
+  Case 7: cap = 12.0h
+  Case 8: cap = 18.0h
+  Case 9: cap = 24.0h
+  Case 10: cap = 30.0h
+  Case 11: cap = 36.0h
+  Case 12: cap = 42.0h
+
+Starting case 6 (cap=6.0h, patience=2.0h)...
+    [t8] best=1393592  (21s)
+    [t5] best=1393799  (21s)
+    [t7] best=1394776  (22s)
+    [t4] best=1393074  (23s)
+    [t14] best=1396029  (23s)
+    [t0] best=1394592  (23s)
+    [t12] best=1394807  (23s)
+    [t13] best=1395141  (24s)
+    [t2] best=1396561  (25s)
+    [t6] best=1394353  (25s)
+    [t10] best=1393329  (25s)
+    [t3] best=1394902  (25s)
+    [t11] best=1393273  (26s)
+    [t1] best=1393939  (27s)
+    [t9] best=1392087  (28s)
+    [t2] best=1406745  (39s)
+    [t15] best=1396340  (41s)
+    [t10] best=1402265  (41s)
+    [t14] best=1403685  (46s)
+    [t6] best=1395718  (46s)
+    [t0] best=1397120  (47s)
+    [t1] best=1400931  (48s)
+    [t7] best=1398513  (50s)
+    [t2] best=1411239  (52s)
+    [t5] best=1403442  (52s)
+    [t9] best=1403019  (53s)
+    [t6] best=1399215  (56s)
+    [t3] best=1401113  (57s)
+    [t10] best=1402881  (58s)
+    [t12] best=1396055  (58s)
+    [t0] best=1413410  (60s)
+    [t1] best=1408158  (65s)
+    [t2] best=1417446  (65s)
+    [t15] best=1399467  (66s)
+    [t1] best=1408495  (67s)
+    [t11] best=1393656  (68s)
+    [t10] best=1405702  (68s)
+    [t7] best=1402046  (70s)
+    [t9] best=1409154  (70s)
+    [t3] best=1402245  (72s)
+    [t4] best=1402449  (75s)
+    [t0] best=1420280  (75s)
+    [t7] best=1406334  (75s)
